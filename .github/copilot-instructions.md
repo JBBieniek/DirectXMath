@@ -24,7 +24,7 @@ These instructions define how GitHub Copilot should assist with this project. Th
 > Notable `.editorconfig` rules: C/C++ files use 4-space indentation, `crlf` line endings, and `latin1` charset — avoid non-ASCII characters in source files.
 - **Documentation**: The project provides documentation on [Microsoft Learn](https://learn.microsoft.com/windows/win32/dxmath/directxmath-portal) with additional wiki pages available on [GitHub](https://github.com/microsoft/DirectXMath/wiki/). The project does **not** use Doxygen.
 - **Error Handling**: The majority of functions have no error conditions and do not throw C++ exceptions which is why they are marked `noexcept`. A few functions have `bool` results to indicate success or failure.
-- **Testing**: Unit tests for this project are implemented in this repository [Test Suite](https://github.com/walbourn/directxmathtest/) and can be run using CTest per the instructions at [Test Documentation](https://github.com/walbourn/directxmathtest/wiki). See [test copilot instructions](https://github.com/walbourn/directxmathtest/blob/main/.github/copilot-instructions.md) for additional information on the tests.
+- **Testing**: Unit tests for this project are implemented in a separate repository [Test Suite](https://github.com/walbourn/directxmathtest/) and can be run using CTest per the instructions at [Test Documentation](https://github.com/walbourn/directxmathtest/wiki). See [test copilot instructions](https://github.com/walbourn/directxmathtest/blob/main/.github/copilot-instructions.md) for additional information on the tests.
 - **Security**: This project uses secure coding practices from the Microsoft Secure Coding Guidelines, and is subject to the `SECURITY.md` file in the root of the repository.
 - **Dependencies**: The project has minimal dependencies, primarily relying on compiler intrinsics. It is designed to be self-contained and portable across different platforms and toolsets.
 - **Continuous Integration**: This project has 18 GitHub Actions workflows covering MSVC, Clang/LLVM, GCC (WSL), ARM64, Address Sanitizer, CodeQL, and super-linter. Workflows are in `.github/workflows/` and include compiler-specific builds (`msvc.yml`, `clangcl.yml`, `cxx.yml`), platform-specific builds (`arm64.yml`, `wsl.yml`), extension tests (`shmath.yml`, `xdsp.yml`), and static analysis (`codeql.yml`, `lint.yml`, `asan.yml`). Azure DevOps pipeline configurations are in `.azuredevops/`.
@@ -438,7 +438,7 @@ These were legacy types originally from xboxmath on the Xbox 360 which no longer
 
 - [Source git repository on GitHub](https://github.com/microsoft/DirectXMath.git)
 - [DirectXMath wiki git repository on GitHub](https://github.com/microsoft/DirectXMath.wiki.git)
-- [DirectXMath test suite git repository on GitHub](https://github.com/walbourn/directxmathtest.wiki.git).
+- [DirectXMath test suite git repository on GitHub](https://github.com/walbourn/directxmathtest.git)
 - [C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines)
 - [Microsoft Secure Coding Guidelines](https://learn.microsoft.com/en-us/security/develop/secure-coding-guidelines)
 - [CMake Documentation](https://cmake.org/documentation/)
@@ -493,7 +493,7 @@ Use these established guards — do not invent new ones:
 | `_M_ARM64EC` | ARM64EC ABI (ARM64 code with x64 interop using ARM-NEON) for MSVC |
 | `__aarch64__` / `__x86_64__` / `__i386__` / `__powerpc64__` | Additional architecture-specific symbols for MinGW/GNUC (`#if`) |
 
-> `_M_ARM`/ `__arm__` is legacy 32-bit ARM which is deprecated.
+> `_M_ARM` / `__arm__` is legacy 32-bit ARM which is deprecated.
 
 ## Code Review Instructions
 
@@ -511,3 +511,27 @@ When reviewing code, focus on the following aspects:
 - Ensure that all public functions and classes are covered by unit tests located on [GitHub](https://github.com/walbourn/directxmathtest.git) where applicable. Report any gaps in test coverage.
 - Check for performance implications, especially in geometry processing algorithms.
 - Provide brutally honest feedback on code quality, design, and potential improvements as needed.
+
+## Release Process
+
+1. Ensure all changes are merged into the `main` branch and that all tests pass.
+2. Git pull the local repository to ensure it is up to date with the `main` branch.
+3. Run the PowerShell script `build\preparerelease.ps1` which will generate a topic branch for the release, update the version number in `CMakeLists.txt`, the `README.md` file, the release notes in the nuspec files, and create a stub in the `CHANGELOG.md` file for the new release.
+4. Edit the `CHANGELOG.md` file to update it with a summary of changes.
+5. Submit the topic branch for review and merge into `main` once approved. Allow the GitHub Actions workflows and the Azure DevOps pipelines to complete successfully before proceeding.
+6. Run the PowerShell script `build\completerelease.ps1` which will set a tag on the project repo and the test repo, and create a release on GitHub with the release notes from `CHANGELOG.md`. Ensure you have set up GPG signing for your GitHub account so that the tags will be verified.
+7. Git pull the local repository to ensure it is up to date with the `main` branch. Be sure to include `--tags`.
+8. Push the `main` branch to the MSCodeHub mirror repository. Be sure to include `--tags`.
+9. Create a PR on MSCodeHub from the `main` branch to the `release` branch.
+10. Merge the PR on MSCodeHub to update the release branch, which will trigger the Azure DevOps pipeline to build the NuGet package.
+11. Download the GitHub source .zip archive from the release. Unzip and compare to the local repo to ensure it matches — keep in mind there may be some CR/LF differences. Run minisign on the .zip to generate a signature file, and upload the signature file to the release assets.
+12. Run the PowerShell script `build\promotenuget.ps1` with the `-Release` parameter to promote the version to the Release view on the project-scoped ADO feed.
+13. Run the MSCodeHub pipeline to publish the NuGet package to nuget.org. The pipeline will automatically push the most recent package promoted to the Release view to nuget.org.
+14. Git pull a local repository of VCPKG to `d:\vcpkg` in sync with the `main` branch of the VCPKG repository.
+15. Run the PowerShell script `build\updatevcpkg.ps1` to update the DirectXMath port in VCPKG with the new release version. This will edit the files in `ports\directxmath`.
+16. Test the VCPKG port using all appropriate triplets and features.
+17. Run `.\vcpkg --x-add-version directxmath` to update the VCPKG versioning history.
+18. Submit a PR to the VCPKG GitHub repository to update the DirectXMath port. The PR will be reviewed and merged by the VCPKG maintainers.
+19. For the DirectXMath release to be included in the next Windows SDK, prepare a PR for the MSCodeHub project from the `main` branch to the `ms_sdk_release` branch. When the PR is complete, the Azure DevOps pipeline will automatically build vpack and submit a PR for further review.
+
+> When fully completed, be sure to update the GitHub release with links to the matching NuGet packages and the VCPKG port.
